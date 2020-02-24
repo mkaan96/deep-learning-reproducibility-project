@@ -1,7 +1,6 @@
 import datetime
 import numpy as np
 import scipy.sparse as sp
-import pyscipopt as scip
 import pickle
 import gzip
 
@@ -11,39 +10,6 @@ def log(str, logfile=None):
     if logfile is not None:
         with open(logfile, mode='a') as f:
             print(str, file=f)
-
-
-def init_scip_params(model, seed, heuristics=True, presolving=True, separating=True, conflict=True):
-
-    seed = seed % 2147483648  # SCIP seed range
-
-    # set up randomization
-    model.setBoolParam('randomization/permutevars', True)
-    model.setIntParam('randomization/permutationseed', seed)
-    model.setIntParam('randomization/randomseedshift', seed)
-
-    # separation only at root node
-    model.setIntParam('separating/maxrounds', 0)
-
-    # no restart
-    model.setIntParam('presolving/maxrestarts', 0)
-
-    # if asked, disable presolving
-    if not presolving:
-        model.setIntParam('presolving/maxrounds', 0)
-        model.setIntParam('presolving/maxrestarts', 0)
-
-    # if asked, disable separating (cuts)
-    if not separating:
-        model.setIntParam('separating/maxroundsroot', 0)
-
-    # if asked, disable conflict analysis (more cuts)
-    if not conflict:
-        model.setBoolParam('conflict/enable', False)
-
-    # if asked, disable primal heuristics
-    if not heuristics:
-        model.setHeuristics(scip.SCIP_PARAMSETTING.OFF)
 
 
 def extract_state(model, buffer=None):
