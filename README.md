@@ -19,17 +19,29 @@
 ## Training
 Run the following command in the terminal from the root of this project:
 
-`conda run -n deep-learning-project python 03_train_gcnn.py`
+```
+source activate deep-learning-project
+python 03_train_gcnn.py --gpu -1
+```
 
 or for the big dataset:
 
-`conda run -n deep-learning-project python 03_train_gcnn.py --problem setcover`
+```
+source activate deep-learning-project
+python 03_train_gcnn.py --gpu -1 --problem setcover
+```
 
 ## Testing
 Run the following command in the terminal from the root of this project:
 
-`conda run -n deep-learning-project python 04_test.py`
+```
+source activate deep-learning-project
+python 04_train_gcnn.py --gpu -1
+```
 
 or for the big dataset:
 
-`conda run -n deep-learning-project python 04_test.py --problem setcover`
+```
+source activate deep-learning-project
+python 04_train_gcnn.py --gpu -1 --problem setcover
+```
