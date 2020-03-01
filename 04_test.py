@@ -118,7 +118,7 @@ if __name__ == '__main__':
     #seeds = [0, 1, 2, 3, 4]
     seeds = [0]
     gcnn_models = ['baseline']
-    test_batch_size = 128
+    test_batch_size = 16
     top_k = [1, 3, 5, 10]
 
     problem_folders = {

@@ -4,15 +4,20 @@ import pathlib
 import pickle
 import numpy as np
 import gzip
-from models.baseline.model import GCNPolicy
 import tensorflow as tf
 import tensorflow.contrib.eager as tfe
+import torch
+from torch import nn
+from torch.utils.data import DataLoader
 
 import utilities
+from models.baseline.model import GCNPolicy
+from torch_code.LazyDataset import LazyDataset
+from torch_code.pre_norm_layer import PreNormLayer
 from utilities import log
 
 from utilities_tf import load_batch_gcnn
-
+from torch_code.model import NeuralNet
 
 def load_batch_tf(x):
     return tf.py_func(
@@ -21,7 +26,7 @@ def load_batch_tf(x):
         [tf.float32, tf.int32, tf.float32, tf.float32, tf.int32, tf.int32, tf.int32, tf.int32, tf.int32, tf.float32])
 
 
-def pretrain(model, dataloader):
+def pretrain(model, dataloader, new_model=None):
     """
     Pre-normalizes a model (i.e., PreNormLayer layers) over the given samples.
 
@@ -36,17 +41,25 @@ def pretrain(model, dataloader):
     number of PreNormLayer layers processed.
     """
     model.pre_train_init()
+    prenorm_layer_cons = model.cons_embedding.layers[0]
+
+    if new_model is not None:
+        new_model.pre_train_init()
+        prenorm_layer_new_model = new_model
+
+
     i = 0
     while True:
         for batch in dataloader:
             c, ei, ev, v, n_cs, n_vs, n_cands, cands, best_cands, cand_scores = batch
             batched_states = (c, ei, ev, v, n_cs, n_vs)
 
-            if not model.pre_train(batched_states, tf.convert_to_tensor(True)):
+            if not model.pre_train(batched_states, tf.convert_to_tensor(True)) or not new_model.pre_train(batched_states):
                 break
 
         res = model.pre_train_next()
-        if res is None:
+        res2 = new_model.pre_train_next()
+        if res is None or res2 is None:
             break
         else:
             layer, name = res
@@ -56,7 +69,7 @@ def pretrain(model, dataloader):
     return i
 
 
-def process(model, dataloader, top_k, optimizer=None):
+def process(model, dataloader, top_k, optimizer=None, new_model=None):
     mean_loss = 0
     mean_kacc = np.zeros(len(top_k))
 
@@ -69,6 +82,9 @@ def process(model, dataloader, top_k, optimizer=None):
         if optimizer:
             with tf.GradientTape() as tape:
                 logits = model(batched_states, tf.convert_to_tensor(True)) # training mode
+                if new_model is not None:
+                    output = new_model(batched_states)
+                    print(output)
                 logits = tf.expand_dims(tf.gather(tf.squeeze(logits, 0), cands), 0)  # filter candidate variables
                 logits = model.pad_output(logits, n_cands.numpy())  # apply padding now
                 loss = tf.losses.sparse_softmax_cross_entropy(labels=best_cands, logits=logits)
@@ -181,8 +197,8 @@ if __name__ == '__main__':
     tf.set_random_seed(rng.randint(np.iinfo(int).max))
 
     ### SET-UP DATASET ###
-    train_files = list(pathlib.Path(f'data/samples/{problem_folder}/train').glob('sample_*.pkl'))
-    valid_files = list(pathlib.Path(f'data/samples/{problem_folder}/valid').glob('sample_*.pkl'))
+    train_files = list(pathlib.Path(f'../data/samples/{problem_folder}/train').glob('sample_*.pkl'))
+    valid_files = list(pathlib.Path(f'../data/samples/{problem_folder}/valid').glob('sample_*.pkl'))
 
 
     def take_subset(sample_files, cands_limit):
@@ -219,15 +235,22 @@ if __name__ == '__main__':
     valid_data = valid_data.prefetch(1)
 
     pretrain_files = [f for i, f in enumerate(train_files) if i % 10 == 0]
-    pretrain_data = tf.data.Dataset.from_tensor_slices(pretrain_files)
-    pretrain_data = pretrain_data.batch(pretrain_batch_size)
+
+    pretrain_data = LazyDataset(pretrain_files, pretrain_batch_size)
+    pretrain_data.map
+    pretrain_data = DataLoader(pretrain_data, num_workers=8)
+
     pretrain_data = pretrain_data.map(load_batch_tf)
     pretrain_data = pretrain_data.prefetch(1)
 
-    model = GCNPolicy()
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    new_model = NeuralNet().to(device)
 
+    # Loss and optimizer
+    criterion = nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(new_model.parameters(), lr=lr)
+    model = GCNPolicy()
     ### TRAINING LOOP ###
-    optimizer = tf.train.AdamOptimizer(learning_rate=lambda: lr)  # dynamic LR trick
     best_loss = np.inf
     for epoch in range(max_epochs + 1):
         log(f"EPOCH {epoch}...", logfile)
@@ -236,7 +259,7 @@ if __name__ == '__main__':
 
         # TRAIN
         if epoch == 0:
-            n = pretrain(model=model, dataloader=pretrain_data)
+            n = pretrain(model=model, dataloader=pretrain_data, new_model=new_model)
             log(f"PRETRAINED {n} LAYERS", logfile)
             # model compilation
             model.call = tfe.defun(model.call, input_signature=model.input_signature)
@@ -247,11 +270,11 @@ if __name__ == '__main__':
             train_data = train_data.batch(batch_size)
             train_data = train_data.map(load_batch_tf)
             train_data = train_data.prefetch(1)
-            train_loss, train_kacc = process(model, train_data, top_k, optimizer)
+            train_loss, train_kacc = process(model, train_data, top_k, optimizer, new_model)
             log(f"TRAIN LOSS: {train_loss:0.3f} " + "".join([f" acc@{k}: {acc:0.3f}" for k, acc in zip(top_k, train_kacc)]), logfile)
 
         # TEST
-        valid_loss, valid_kacc = process(model, valid_data, top_k, None)
+        valid_loss, valid_kacc = process(model, valid_data, top_k, None, new_model)
         log(f"VALID LOSS: {valid_loss:0.3f} " + "".join([f" acc@{k}: {acc:0.3f}" for k, acc in zip(top_k, valid_kacc)]), logfile)
 
         if valid_loss < best_loss:

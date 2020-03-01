@@ -14,8 +14,9 @@ class PreNormLayer(K.layers.Layer):
     layer's parameters are aimed to be computed during the pre-training phase.
     """
 
-    def __init__(self, n_units, shift=True, scale=True):
+    def __init__(self, n_units, shift=True, scale=True, name2='unknown'):
         super().__init__()
+        self.name2 = name2
         assert shift or scale
 
         if shift:
@@ -51,6 +52,7 @@ class PreNormLayer(K.layers.Layer):
         if self.waiting_updates:
             self.update_stats(input)
             self.received_updates = True
+            print(f"Updated {self.name2}")
             raise PreNormException
 
         if self.shift is not None:
@@ -293,19 +295,19 @@ class GCNPolicy(BaseModel):
 
         # CONSTRAINT EMBEDDING
         self.cons_embedding = K.Sequential([
-            PreNormLayer(n_units=self.cons_nfeats),
+            PreNormLayer(n_units=self.cons_nfeats, name2='Constraint'),
             K.layers.Dense(units=self.emb_size, activation=self.activation, kernel_initializer=self.initializer),
             K.layers.Dense(units=self.emb_size, activation=self.activation, kernel_initializer=self.initializer),
         ])
 
         # EDGE EMBEDDING
         self.edge_embedding = K.Sequential([
-            PreNormLayer(self.edge_nfeats),
+            PreNormLayer(self.edge_nfeats, name2='Edge'),
         ])
 
         # VARIABLE EMBEDDING
         self.var_embedding = K.Sequential([
-            PreNormLayer(n_units=self.var_nfeats),
+            PreNormLayer(n_units=self.var_nfeats, name2='Variable'),
             K.layers.Dense(units=self.emb_size, activation=self.activation, kernel_initializer=self.initializer),
             K.layers.Dense(units=self.emb_size, activation=self.activation, kernel_initializer=self.initializer),
         ])
