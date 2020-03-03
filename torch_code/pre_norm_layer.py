@@ -48,10 +48,10 @@ class PreNormLayer(nn.Module):
         """
         # assert self.n_units == 1 or input.size()[-1] == self.n_units, f"Expected input dimension of size {self.n_units}, got {input.size()[-1]}."
 
-        input = input.view([-1, self.n_units])
-        sample_avg = torch.mean(input)
-        sample_var = torch.mean((input - sample_avg) ** 2)
-        sample_count = input.size() / self.n_units
+        input = input.reshape([-1, self.n_units])
+        sample_avg = torch.mean(input, dim=0)
+        sample_var = torch.mean((input - sample_avg) ** 2, dim=0)
+        sample_count = input.numel() / self.n_units
         delta = sample_avg - self.avg
 
         self.m2 = self.var * self.count + sample_var * sample_count + delta ** 2 * self.count * sample_count / (
@@ -78,11 +78,11 @@ class PreNormLayer(nn.Module):
         """
         assert self.count > 0
         if self.shift is not None:
-            self.shift.assign(-self.avg)
+            self.shift.data = -self.avg
 
         if self.scale is not None:
             self.var = torch.where(torch.eq(self.var, 0), torch.ones_like(self.var), self.var)  # NaN check trick
-            self.scale.assign(1 / np.sqrt(self.var))
+            self.scale.data = 1 / np.sqrt(self.var)
 
         del self.avg, self.var, self.m2, self.count
         self.waiting_updates = False

@@ -12,7 +12,7 @@ import utilities
 from utilities import log
 
 from utilities_tf import load_batch_gcnn
-
+import json
 
 def load_batch_tf(x):
     return tf.py_func(
@@ -124,13 +124,14 @@ if __name__ == '__main__':
         default=0,
     )
     args = parser.parse_args()
-
+    with open('.config.json', 'r') as f:
+        config = json.load(f)
     ### HYPER PARAMETERS ###
     max_epochs = 1000
     epoch_size = 312
-    batch_size = 16
-    pretrain_batch_size = 16
-    valid_batch_size = 16
+    batch_size = config['batch_size']
+    pretrain_batch_size = config['pretrain_batch_size']
+    valid_batch_size = config['valid_batch_size']
     lr = 0.001
     patience = 10
     early_stopping = 20
@@ -149,7 +150,7 @@ if __name__ == '__main__':
 
     running_dir = f"trained_models/{args.problem}/baseline/{args.seed}"
 
-    # os.makedirs(running_dir)
+    os.makedirs(running_dir, exist_ok=True)
 
     ### LOG ###
     logfile = os.path.join(running_dir, 'log.txt')
@@ -184,30 +185,7 @@ if __name__ == '__main__':
     train_files = list(pathlib.Path(f'data/samples/{problem_folder}/train').glob('sample_*.pkl'))
     valid_files = list(pathlib.Path(f'data/samples/{problem_folder}/valid').glob('sample_*.pkl'))
 
-
-    def take_subset(sample_files, cands_limit):
-        nsamples = 0
-        ncands = 0
-        for filename in sample_files:
-            with gzip.open(filename, 'rb') as file:
-                sample = pickle.load(file)
-
-            _, _, _, cands, _ = sample['data']
-            ncands += len(cands)
-            nsamples += 1
-
-            if ncands >= cands_limit:
-                log(f"  dataset size limit reached ({cands_limit} candidate variables)", logfile)
-                break
-
-        return sample_files[:nsamples]
-
-
-    if train_ncands_limit < np.inf:
-        train_files = take_subset(rng.permutation(train_files), train_ncands_limit)
     log(f"{len(train_files)} training samples", logfile)
-    if valid_ncands_limit < np.inf:
-        valid_files = take_subset(valid_files, valid_ncands_limit)
     log(f"{len(valid_files)} validation samples", logfile)
 
     train_files = [str(x) for x in train_files]
