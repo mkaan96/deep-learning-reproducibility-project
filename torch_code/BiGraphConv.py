@@ -81,19 +81,25 @@ class BipartiteGraphConvolution(nn.Module):
             K.layers.Dense(units=self.emb_size, activation=None, kernel_initializer=self.initializer),
         ])
     
-    def forward_c2v(self, l_shape, x_edge, activation, initializer):
+    def forward_c2v(self, l_shape, ev_shape, x_edge, activation, initializer):
         '''
         forward pass from constraints to variables
+        
         cons_embedding -> feature_module_left_1
+        
         feature_module_left_1 -> feature_module_left_2
         edge_embedding -> feature_module_left_2
+        
         feature_model_left_2 -> feature_module_right_2
         '''
-        x_ = self.feature_module_left_2(F.activation(self.feature_module_left_1(x_left)))
-        x_edge = self.feature_module_left_2(F.activation(self.feature_module_edge(x_edge)))
+        x_left = self.feature_module_left_1(input_shapes=l_shape)
+        x_edge = self.feature_module_edge(input_shapes=ev_shape)
         
+        x = torch.cat((x_left,x_edge), dim = 1)
         
-        return 1
+        x = self.activation(self.feature_module_left_2) 
+        x = self.activation(self.feature_module_right_2)
+        return x
     
     def forward_v2c():
         '''
