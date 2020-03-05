@@ -21,7 +21,7 @@ class BipartiteGraphConvolution(nn.Module):
     *Kernel initialier = statistical ddistribution to intilize weights
     
     """
-    def init_weights(x, initializer):
+    def init_weights(x, self.initializer):
             if type(x) == nn.Linear :
                 initializer(x.weight)
                 #fill in weights, 0.1?
@@ -30,7 +30,7 @@ class BipartiteGraphConvolution(nn.Module):
                 torch.nn.init.constant(x.bias.data, val=0)
                 x.bias.data.fill_(0)
                 
-    def __init__(self, emb_size, activation, initializer, right_to_left=False, weights):
+    def __init__(self, emb_size, activation, initializer, right_to_left, weights):
         
         super().__init__()
         
@@ -39,28 +39,33 @@ class BipartiteGraphConvolution(nn.Module):
         self.initializer = initializer
         self.right_to_left = right_to_left
         
-        self.weights = init_weights(x,initializer)
+        self.weights = BipartiteGraphConvolution.init_weights(self.initializer)
                 
- 
+        #TODO: Where to put apply weights? In forward pass?
+        
         # feature layers
         #self.feature_module_left = nn.Sequential([
         #    K.layers.Dense(units=self.emb_size, activation=None, use_bias=True, kernel_initializer=self.initializer)
         #])
-        
+        self.feature_module_left_1.apply(self.weights)
         self.feature_module_left_1 = nn.Linear(input_shapes, self.emb_size)
+        
+        self.feature_module_left_2.apply(self.weights)
         self.feature_module_left_2 = nn.Linear(input_shapes, self.emb_size)
 
         #self.feature_module_edge = K.Sequential([
         #    K.layers.Dense(units=self.emb_size, activation=None, use_bias=False, kernel_initializer=self.initializer)
         #])
-        
+        self.feature_module_edge.apply(self.weights)
         self.feature_module_edge = nn.Linear(input_shapes, self.emb_size)
         
         #self.feature_module_right = K.Sequential([
         #    K.layers.Dense(units=self.emb_size, activation=None, use_bias=False, kernel_initializer=self.initializer)
         #])
-        
+        self.feature_module_right_1.apply(self.weights)
         self.feature_module_right_1 = nn.Linear(input_shapes, self.emb_size)
+        
+        self.feature_module_right_2.apply(self.weights)
         self.feature_module_right_2 = nn.Linear(input_shapes, self.emb_size)
 
         
@@ -81,6 +86,12 @@ class BipartiteGraphConvolution(nn.Module):
             K.layers.Dense(units=self.emb_size, activation=None, kernel_initializer=self.initializer),
         ])
     
+        if right_to_left==False:
+            BipartiteGraphConvolution.forward_c2v()
+        else: 
+            BipartiteGraphConvolution.forward_v2c()
+
+        
     def forward_c2v(self, l_shape, ev_shape, x_edge, activation, initializer):
         '''
         forward pass from constraints to variables
@@ -89,9 +100,10 @@ class BipartiteGraphConvolution(nn.Module):
         
         feature_module_left_1 -> feature_module_left_2
         edge_embedding -> feature_module_left_2
-        
+       
         feature_model_left_2 -> feature_module_right_2
         '''
+        
         x_left = self.feature_module_left_1(input_shapes=l_shape)
         x_edge = self.feature_module_edge(input_shapes=ev_shape)
         
@@ -99,8 +111,10 @@ class BipartiteGraphConvolution(nn.Module):
         
         x = self.activation(self.feature_module_left_2) 
         x = self.activation(self.feature_module_right_2)
+        
         return x
-    
+
+
     def forward_v2c():
         '''
         forward pass from variables to constraints
