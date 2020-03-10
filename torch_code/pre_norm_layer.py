@@ -13,12 +13,12 @@ class PreNormLayer(nn.Module):
         assert shift or scale
 
         if shift:
-            self.shift = nn.Parameter(nn.init.constant_(torch.empty(n_units, ), 1), requires_grad=False)
+            self.shift = nn.Parameter(nn.init.constant_(torch.empty(n_units, ), 1), requires_grad=False).cuda()
         else:
             self.shift = None
 
         if scale:
-            self.scale = nn.Parameter(nn.init.constant_(torch.empty(n_units, ), 1), requires_grad=False)
+            self.scale = nn.Parameter(nn.init.constant_(torch.empty(n_units, ), 1), requires_grad=False).cuda()
         else:
             self.scale = None
 
@@ -82,7 +82,7 @@ class PreNormLayer(nn.Module):
 
         if self.scale is not None:
             self.var = torch.where(torch.eq(self.var, 0), torch.ones_like(self.var), self.var)  # NaN check trick
-            self.scale.data = 1 / np.sqrt(self.var)
+            self.scale.data = 1 / torch.sqrt(self.var)
 
         del self.avg, self.var, self.m2, self.count
         self.waiting_updates = False

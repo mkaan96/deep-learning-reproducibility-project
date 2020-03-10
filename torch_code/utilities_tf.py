@@ -58,15 +58,15 @@ def load_batch_gcnn(sample_files):
     cand_scoress = np.concatenate(cand_scoress, axis=0)
 
     # convert to tensors
-    c_features = torch.tensor(c_features, dtype=torch.float32)
-    e_indices = torch.tensor(e_indices, dtype=torch.int32)
-    e_features = torch.tensor(e_features, dtype=torch.float32)
-    v_features = torch.tensor(v_features, dtype=torch.float32)
-    n_cs_per_sample = torch.tensor(n_cs_per_sample, dtype=torch.int32)
-    n_vs_per_sample = torch.tensor(n_vs_per_sample, dtype=torch.int32)
-    candss = torch.tensor(candss, dtype=torch.int32)
-    cand_choices = torch.tensor(cand_choices, dtype=torch.int32)
-    cand_scoress = torch.tensor(cand_scoress, dtype=torch.float32)
-    n_cands_per_sample = torch.tensor(n_cands_per_sample, dtype=torch.int32)
+    c_features = torch.tensor(c_features, dtype=torch.float32).cuda()
+    e_indices = torch.tensor(e_indices, dtype=torch.int32).cuda()
+    e_features = torch.tensor(e_features, dtype=torch.float32).cuda()
+    v_features = torch.tensor(v_features, dtype=torch.float32).cuda()
+    n_cs_per_sample = torch.tensor(n_cs_per_sample, dtype=torch.int32).cuda()
+    n_vs_per_sample = torch.tensor(n_vs_per_sample, dtype=torch.int32).cuda()
+    candss = torch.tensor(candss, dtype=torch.int32).cuda()
+    cand_choices = torch.tensor(cand_choices, dtype=torch.int32).cuda()
+    cand_scoress = torch.tensor(cand_scoress, dtype=torch.float32).cuda()
+    n_cands_per_sample = torch.tensor(n_cands_per_sample, dtype=torch.int32).cuda()
 
     return c_features, e_indices, e_features, v_features, n_cs_per_sample, n_vs_per_sample, n_cands_per_sample, candss, cand_choices, cand_scoress
