@@ -1,8 +1,7 @@
 import torch
 import torch.nn as nn
-import tensorflow as tf
+from torch_code.embedding_modules import EmbeddingModule, EdgeEmbeddingModule
 
-# Fully connected neural network with one hidden layer
 from torch_code.pre_norm_layer import PreNormLayer, PreNormException
 
 
@@ -14,12 +13,21 @@ class NeuralNet(nn.Module):
         self.edge_nfeats = 1
         self.var_nfeats = 19
 
-        self.pre_norm_layer = PreNormLayer(self.cons_nfeats, shift=True)
+        self.cons_embedding = EmbeddingModule(self.cons_nfeats, self.emb_size).cuda()
+        self.edge_embedding = EdgeEmbeddingModule(self.edge_nfeats).cuda()
+        self.var_embedding = EmbeddingModule(self.var_nfeats, self.emb_size).cuda()
 
     def forward(self, inputs):
         constraint_features, edge_indices, edge_features, variable_features, n_cons_per_sample, n_vars_per_sample = inputs
-        out = self.pre_norm_layer(constraint_features)
-        return out
+
+        # EMBEDDINGS
+        constraint_features = self.cons_embedding(constraint_features)
+        edge_features = self.edge_embedding(edge_features)
+        variable_features = self.var_embedding(variable_features)
+
+        # Constraint, edge and variable features need to be convoluted.
+
+        return []
 
     def pre_train_init(self):
         self.pre_train_init_rec()
