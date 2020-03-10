@@ -5,3 +5,5 @@ results
 .ipynb_checkpoints
 __pycache__/
 .idea/
+
+config.json
