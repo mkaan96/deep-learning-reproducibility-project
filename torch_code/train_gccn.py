@@ -62,8 +62,8 @@ def process(model, dataloader, top_k, optimizer=None):
     for batch in dataloader:
         batch = load_batch_gcnn(batch)
         c, ei, ev, v, n_cs, n_vs, n_cands, cands, best_cands, cand_scores = batch
-        batched_states = (c, ei, ev, v, torch.sum(n_cs, keepdim=True), torch.sum(n_vs, keepdim=True))  # prevent padding
-        batch_size = len(n_cs.numpy())
+        batched_states = (c, ei, ev, v, torch.sum(n_cs), torch.sum(n_vs))  # prevent padding
+        batch_size = n_cs.shape
 
         if optimizer:
             with tf.GradientTape() as tape:
