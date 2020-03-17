@@ -23,6 +23,8 @@ class EmbeddingModule(nn.Module):
 
         layer_2_output = self.nn_layer_2(layer_1_output)
         layer_2_output = nn.functional.relu(layer_2_output)
+        del pre_norm_output
+        del layer_1_output
         return layer_2_output
 
 

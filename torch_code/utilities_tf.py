@@ -59,7 +59,7 @@ def load_batch_gcnn(sample_files):
 
     # convert to tensors
     c_features = torch.tensor(c_features, dtype=torch.float32).cuda()
-    e_indices = torch.tensor(e_indices, dtype=torch.int32).cuda()
+    e_indices = torch.tensor(e_indices, dtype=torch.long).cuda()
     e_features = torch.tensor(e_features, dtype=torch.float32).cuda()
     v_features = torch.tensor(v_features, dtype=torch.float32).cuda()
     n_cs_per_sample = torch.tensor(n_cs_per_sample, dtype=torch.int32).cuda()
@@ -70,3 +70,10 @@ def load_batch_gcnn(sample_files):
     n_cands_per_sample = torch.tensor(n_cands_per_sample, dtype=torch.int32).cuda()
 
     return c_features, e_indices, e_features, v_features, n_cs_per_sample, n_vs_per_sample, n_cands_per_sample, candss, cand_choices, cand_scoress
+
+
+def remove_batch_from_memory(batch):
+    # c, ei, ev, v, n_cs, n_vs, n_cands, cands, best_cands, cand_scores = batch
+    for x in batch:
+        del x
+
