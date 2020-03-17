@@ -124,7 +124,7 @@ if __name__ == '__main__':
         default=0,
     )
     args = parser.parse_args()
-    with open('.config.json', 'r') as f:
+    with open('config.json', 'r') as f:
         config = json.load(f)
     ### HYPER PARAMETERS ###
     max_epochs = 1000
@@ -217,7 +217,7 @@ if __name__ == '__main__':
             n = pretrain(model=model, dataloader=pretrain_data)
             log(f"PRETRAINED {n} LAYERS", logfile)
             # model compilation
-            model.call = tfe.defun(model.call, input_signature=model.input_signature)
+            # model.call = tfe.defun(model.call, input_signature=model.input_signature)
         else:
             # bugfix: tensorflow's shuffle() seems broken...
             epoch_train_files = rng.choice(train_files, epoch_size * batch_size, replace=True)

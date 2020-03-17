@@ -13,7 +13,7 @@ from models.baseline.model import GCNPolicy
 from torch_code.LazyDataset import LazyDataset
 from torch_code.utilities import log
 
-from torch_code.utilities_tf import load_batch_gcnn
+from torch_code.utilities_tf import load_batch_gcnn, remove_batch_from_memory
 from torch_code.model import NeuralNet
 import json
 
@@ -43,8 +43,12 @@ def pretrain(model, dataloader):
             batched_states = (c, ei, ev, v, n_cs, n_vs)
 
             if not new_model.pre_train(batched_states):
+                remove_batch_from_memory(batch)
+                torch.cuda.empty_cache()
                 break
 
+            remove_batch_from_memory(batch)
+            torch.cuda.empty_cache()
         res = new_model.pre_train_next()
         if res is None:
             break
@@ -62,8 +66,8 @@ def process(model, dataloader, top_k, optimizer=None):
     for batch in dataloader:
         batch = load_batch_gcnn(batch)
         c, ei, ev, v, n_cs, n_vs, n_cands, cands, best_cands, cand_scores = batch
-        batched_states = (c, ei, ev, v, torch.sum(n_cs, keepdim=True), torch.sum(n_vs, keepdim=True))  # prevent padding
-        batch_size = len(n_cs.numpy())
+        batched_states = (c, ei, ev, v, torch.sum(n_cs), torch.sum(n_vs))  # prevent padding
+        batch_size = n_cs.shape
 
         if optimizer:
             with tf.GradientTape() as tape:
