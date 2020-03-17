@@ -7,13 +7,13 @@ class EmbeddingModule(nn.Module):
     """
     This class will be used for both variable and constraint embedding
     """
-    def __init__(self, n_feats, emb_size):
+    def __init__(self, n_feats, emb_size, device):
         super().__init__()
-        self.pre_norm_layer = PreNormLayer(n_units=n_feats).cuda()
-        self.nn_layer_1 = nn.Linear(n_feats, emb_size).cuda()
+        self.pre_norm_layer = PreNormLayer(n_units=n_feats).to(device)
+        self.nn_layer_1 = nn.Linear(n_feats, emb_size).to(device)
         nn.init.orthogonal_(self.nn_layer_1.weight)
 
-        self.nn_layer_2 = nn.Linear(emb_size, emb_size).cuda()
+        self.nn_layer_2 = nn.Linear(emb_size, emb_size).to(device)
         nn.init.orthogonal_(self.nn_layer_2.weight)
 
     def forward(self, input):
@@ -32,9 +32,9 @@ class EdgeEmbeddingModule(nn.Module):
     """
     This class will only be used for edge embedding
     """
-    def __init__(self, n_feats):
+    def __init__(self, n_feats, device):
         super().__init__()
-        self.pre_norm_layer = PreNormLayer(n_units=n_feats)
+        self.pre_norm_layer = PreNormLayer(n_units=n_feats, device=device)
 
     def forward(self, input):
         return self.pre_norm_layer(input)

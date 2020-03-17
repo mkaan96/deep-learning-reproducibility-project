@@ -8,17 +8,18 @@ class PreNormException(Exception):
 
 
 class PreNormLayer(nn.Module):
-    def __init__(self, n_units, shift=True, scale=True):
+    def __init__(self, n_units, shift=True, scale=True, device=None):
         super().__init__()
+        self.device = device
         assert shift or scale
 
         if shift:
-            self.shift = nn.Parameter(nn.init.constant_(torch.empty(n_units, ), 1), requires_grad=False).cuda()
+            self.shift = nn.Parameter(nn.init.constant_(torch.empty(n_units, ), 1), requires_grad=False).to(device)
         else:
             self.shift = None
 
         if scale:
-            self.scale = nn.Parameter(nn.init.constant_(torch.empty(n_units, ), 1), requires_grad=False).cuda()
+            self.scale = nn.Parameter(nn.init.constant_(torch.empty(n_units, ), 1), requires_grad=False).to(device)
         else:
             self.scale = None
 

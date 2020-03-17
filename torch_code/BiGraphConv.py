@@ -21,9 +21,9 @@ class BipartiteGraphConvolution(nn.Module):
 
     """
 
-    def __init__(self, emb_size, right_to_left=False):
+    def __init__(self, emb_size, right_to_left=False, device=None):
         super().__init__()
-        
+        self.device = device
         self.emb_size = emb_size
         self.right_to_left = right_to_left
 
@@ -95,7 +95,7 @@ class BipartiteGraphConvolution(nn.Module):
         joint_features = nn.functional.relu(joint_features)
         joint_features = self.feature_model_final_linear(joint_features)
 
-        conv_output = torch.zeros([scatter_out_size, self.emb_size]).cuda().index_add(0, edge_indices[scatter_dim], joint_features)
+        conv_output = torch.zeros([scatter_out_size, self.emb_size]).to(self.device).index_add(0, edge_indices[scatter_dim], joint_features)
         conv_output = self.post_conv_module(conv_output)
 
         output = torch.cat((conv_output, prev_features), dim=1)

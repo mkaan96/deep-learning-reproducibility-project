@@ -17,6 +17,7 @@ from torch_code.utilities_tf import load_batch_gcnn, remove_batch_from_memory
 from torch_code.model import NeuralNet
 import json
 
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def pretrain(model, dataloader):
     """
@@ -203,8 +204,7 @@ if __name__ == '__main__':
     pretrain_data = LazyDataset(pretrain_files)
     pretrain_data = DataLoader(pretrain_data, batch_size=pretrain_batch_size)
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    new_model = NeuralNet().to(device)
+    new_model = NeuralNet(device).to(device)
 
     # Loss and optimizer
     criterion = nn.CrossEntropyLoss()
