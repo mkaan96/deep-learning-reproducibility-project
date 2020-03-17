@@ -39,7 +39,7 @@ def pretrain(model, dataloader):
     i = 0
     while True:
         for batch in dataloader:
-            batch = load_batch_gcnn(batch)
+            batch = load_batch_gcnn(batch, device)
             c, ei, ev, v, n_cs, n_vs, n_cands, cands, best_cands, cand_scores = batch
             batched_states = (c, ei, ev, v, n_cs, n_vs)
 
