@@ -21,8 +21,8 @@ class NeuralNet(nn.Module):
         self.edge_embedding = EdgeEmbeddingModule(self.edge_nfeats, device).to(device)
         self.var_embedding = EmbeddingModule(self.var_nfeats, self.emb_size, device).to(device)
 
-        self.conv_v_to_c = BipartiteGraphConvolution(self.emb_size, right_to_left=True)
-        self.conv_c_to_v = BipartiteGraphConvolution(self.emb_size)
+        self.conv_v_to_c = BipartiteGraphConvolution(self.emb_size, right_to_left=True, device=device)
+        self.conv_c_to_v = BipartiteGraphConvolution(self.emb_size, device=device)
 
         self.output_module = OutputModule(self.emb_size)
 
