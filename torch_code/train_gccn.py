@@ -65,7 +65,7 @@ def process(model, dataloader, top_k, optimizer=None):
 
     n_samples_processed = 0
     for batch in dataloader:
-        batch = load_batch_gcnn(batch)
+        batch = load_batch_gcnn(batch, device)
         c, ei, ev, v, n_cs, n_vs, n_cands, cands, best_cands, cand_scores = batch
         batched_states = (c, ei, ev, v, torch.sum(n_cs), torch.sum(n_vs))  # prevent padding
         batch_size = n_cs.shape
