@@ -6,10 +6,8 @@ Created on Thu Mar  5 11:28:53 2020
 """
 import torch
 import torch.nn as nn
-
 # Fully connected neural network with one hidden layer
 from torch_code.pre_norm_layer import PreNormLayer, PreNormException
-
 
 class BipartiteGraphConvolution(nn.Module):
     """
@@ -21,9 +19,9 @@ class BipartiteGraphConvolution(nn.Module):
 
     """
 
-    def __init__(self, emb_size, right_to_left=False):
+    def __init__(self, emb_size, right_to_left=False, device=None):
         super().__init__()
-        
+        self.device = device
         self.emb_size = emb_size
         self.right_to_left = right_to_left
 
@@ -80,22 +78,35 @@ class BipartiteGraphConvolution(nn.Module):
             scatter_dim = 1
             prev_features = right_features
             is_left = False
+                
+        #Used this function to check whether gradient calc is required
+        #print(edge_indices.requires_grad) , Result = False
+        #print(left_features.requires_grad) , Result = True
+        #print(edge_features.requires_grad), Result = True
+        
+        
+        left_features = self.feature_module_left(left_features)[edge_indices[0]].detach()
+        
+        edge_features = self.feature_module_edge(edge_features).detach()
+        
+        right_features = self.feature_module_right(right_features)[edge_indices[1]].detach()
+            
+        sub_features = torch.add(left_features, edge_features)
+        joint_features = torch.add(right_features, sub_features)
 
-        left_features = self.feature_module_left(left_features)[edge_indices[0]]
-        edge_features = self.feature_module_edge(edge_features)
-        right_features = self.feature_module_right(right_features)[edge_indices[1]]
-
-        joint_features = left_features.item() + edge_features.item() + right_features.item()
-        if is_left:
+        
+        if  is_left:
             del right_features
         else:
             del left_features
         del edge_features
+        
+        
         joint_features = self.feature_model_final_pre_norm(joint_features)
         joint_features = nn.functional.relu(joint_features)
         joint_features = self.feature_model_final_linear(joint_features)
 
-        conv_output = torch.zeros([scatter_out_size, self.emb_size]).cuda().index_add(0, edge_indices[scatter_dim], joint_features)
+        conv_output = torch.zeros([scatter_out_size, self.emb_size]).to(self.device).index_add(0, edge_indices[scatter_dim], joint_features)
         conv_output = self.post_conv_module(conv_output)
 
         output = torch.cat((conv_output, prev_features), dim=1)
