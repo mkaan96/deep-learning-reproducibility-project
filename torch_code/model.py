@@ -79,4 +79,27 @@ class NeuralNet(nn.Module):
                 layer.stop_updates()
                 return layer
         return None
+    
+    def pad_output(self, output, n_vars_per_sample, pad_value=-1e8):
+        # n_vars_max = tf.reduce_max(n_vars_per_sample)
+        n_vars_max = torch.max(n_vars_per_sample)
 
+        # output = tf.split(
+        output = torch.split(output, tuple(n_vars_per_sample), 1)
+        # output = tf.concat([
+        #     tf.pad(
+        #         x,
+        #         paddings=[[0, 0], [0, n_vars_max - tf.shape(x)[1]]],
+        #         mode='CONSTANT',
+        #         constant_values=pad_value)
+        #     for x in output
+        # ], axis=0)
+
+        output2 = []
+        for x in output:
+            newx = torch.nn.functional.pad(x,(0, n_vars_max.item() - x.shape[1]),'constant', pad_value)
+            output2.append(newx)
+
+        output = torch.cat(output2, 0)
+
+        return output
