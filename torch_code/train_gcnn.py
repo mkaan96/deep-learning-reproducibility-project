@@ -75,25 +75,42 @@ def process(model, dataloader, top_k, optimizer=None):
         if optimizer:
             with tf.GradientTape() as tape:
                 logits = model(batched_states) # training mode
-                logits = tf.expand_dims(tf.gather(tf.squeeze(logits, 0), cands), 0)  # filter candidate variables
-                logits = model.pad_output(logits, n_cands.numpy())  # apply padding now
-                loss = tf.losses.sparse_softmax_cross_entropy(labels=best_cands, logits=logits)
+                # logits = tf.expand_dims(tf.gather(tf.squeeze(logits, 0), cands), 0)  # filter candidate variables
+                logits = torch.unsqueeze(torch.squeeze(logits, 0)[cands.type(torch.LongTensor)], 0) # filter candidate variables
+                logits = model.pad_output(logits, n_cands)  # apply padding now
+                
+                # loss = tf.losses.sparse_softmax_cross_entropy(labels=best_cands, logits=logits)
+                ## optimizer.zero_grad()
+                cross = nn.CrossEntropyLoss()
+                loss = cross(logits, best_cands)
+                loss.backward()
+                ## optimizer.step()
+
             grads = tape.gradient(target=loss, sources=model.variables)
             optimizer.apply_gradients(zip(grads, model.variables))
         else:
             logits = model(batched_states)  # eval mode
-            logits = tf.expand_dims(tf.gather(tf.squeeze(logits, 0), cands), 0)  # filter candidate variables
-            logits = model.pad_output(logits, n_cands.numpy())  # apply padding now
-            loss = tf.losses.sparse_softmax_cross_entropy(labels=best_cands, logits=logits)
+            # logits = tf.expand_dims(tf.gather(tf.squeeze(logits, 0), cands), 0)  # filter candidate variables
+            logits = torch.unsqueeze(torch.squeeze(logits, 0)[cands.type(torch.LongTensor)], 0) # filter candidate variables
+            logits = model.pad_output(logits, n_cands.type(torch.LongTensor))  # apply padding now
+            
+            # loss = tf.losses.sparse_softmax_cross_entropy(labels=best_cands, logits=logits)
+            cross = nn.CrossEntropyLoss()
+            loss = cross(logits, best_cands.type(torch.LongTensor))
+            loss.backward()
 
-        true_scores = model.pad_output(tf.reshape(cand_scores, (1, -1)), n_cands)
-        true_bestscore = tf.reduce_max(true_scores, axis=-1, keepdims=True)
+        # true_scores = model.pad_output(tf.reshape(cand_scores, (1, -1)), n_cands)
+        true_scores = model.pad_output(torch.reshape(cand_scores, (1, -1)), n_cands)
+        # true_bestscore = tf.reduce_max(true_scores, axis=-1, keepdims=True)
+        true_bestscore = torch.max(true_scores, -1, True)
         true_scores = true_scores.numpy()
-        true_bestscore = true_bestscore.numpy()
-
+        true_bestscore = true_bestscore[0].numpy()
+ 
         kacc = []
         for k in top_k:
-            pred_top_k = tf.nn.top_k(logits, k=k)[1].numpy()
+            # pred_top_k = tf.nn.top_k(logits, k=k)[1].numpy()
+            pred_top_k = torch.topk(logits, k)[1].numpy()
+
             pred_top_k_true_scores = np.take_along_axis(true_scores, pred_top_k, axis=1)
             kacc.append(np.mean(np.any(pred_top_k_true_scores == true_bestscore, axis=1)))
         kacc = np.asarray(kacc)
@@ -106,7 +123,6 @@ def process(model, dataloader, top_k, optimizer=None):
     mean_kacc /= n_samples_processed
 
     return mean_loss, mean_kacc
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
