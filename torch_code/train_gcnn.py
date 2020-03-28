@@ -82,7 +82,7 @@ def process(model, dataloader, top_k, optimizer=None):
                 # loss = tf.losses.sparse_softmax_cross_entropy(labels=best_cands, logits=logits)
                 ## optimizer.zero_grad()
                 cross = nn.CrossEntropyLoss()
-                loss = cross(logits, best_cands)
+                loss = cross(logits, best_cands.type(torch.LongTensor))
                 loss.backward()
                 ## optimizer.step()
 
@@ -115,9 +115,14 @@ def process(model, dataloader, top_k, optimizer=None):
             kacc.append(np.mean(np.any(pred_top_k_true_scores == true_bestscore, axis=1)))
         kacc = np.asarray(kacc)
 
-        mean_loss += loss.numpy() * batch_size
-        mean_kacc += kacc * batch_size
-        n_samples_processed += batch_size
+        print("kacc ", kacc)
+        print("samples ", n_samples_processed)
+        print("batch ", batch_size[0])
+        mean_loss += loss.detach().numpy() * batch_size[0]
+        mean_kacc += kacc * batch_size[0]
+        print("mean loss ", mean_loss)
+        print("mean kacc ", mean_kacc)
+        n_samples_processed += batch_size[0]
 
     mean_loss /= n_samples_processed
     mean_kacc /= n_samples_processed
@@ -201,7 +206,8 @@ if __name__ == '__main__':
     tf.executing_eagerly()
 
     rng = np.random.RandomState(args.seed)
-    tf.set_random_seed(rng.randint(np.iinfo(int).max))
+    torch.manual_seed(rng.randint(np.iinfo(int).max))
+    # tf.set_random_seed(rng.randint(np.iinfo(int).max))
 
     ### SET-UP DATASET ###
     train_files = list(pathlib.Path(f'../data/samples/{problem_folder}/train').glob('sample_*.pkl'))
