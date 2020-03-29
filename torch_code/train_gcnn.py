@@ -73,21 +73,22 @@ def process(model, dataloader, top_k, optimizer=None):
         batch_size = n_cs.shape
 
         if optimizer:
-            with tf.GradientTape() as tape:
+          #  with tf.GradientTape() as tape:
                 logits = model(batched_states) # training mode
                 # logits = tf.expand_dims(tf.gather(tf.squeeze(logits, 0), cands), 0)  # filter candidate variables
                 logits = torch.unsqueeze(torch.squeeze(logits, 0)[cands.type(torch.LongTensor)], 0) # filter candidate variables
                 logits = model.pad_output(logits, n_cands)  # apply padding now
                 
                 # loss = tf.losses.sparse_softmax_cross_entropy(labels=best_cands, logits=logits)
-                ## optimizer.zero_grad()
+                
+                optimizer.zero_grad()
                 cross = nn.CrossEntropyLoss()
                 loss = cross(logits, best_cands.type(torch.LongTensor))
                 loss.backward()
-                ## optimizer.step()
+                optimizer.step()
 
-            grads = tape.gradient(target=loss, sources=model.variables)
-            optimizer.apply_gradients(zip(grads, model.variables))
+           # grads = tape.gradient(target=loss, sources=model.variables)
+           # optimizer.apply_gradients(zip(grads, model.variables))
         else:
             logits = model(batched_states)  # eval mode
             # logits = tf.expand_dims(tf.gather(tf.squeeze(logits, 0), cands), 0)  # filter candidate variables
@@ -115,9 +116,6 @@ def process(model, dataloader, top_k, optimizer=None):
             kacc.append(np.mean(np.any(pred_top_k_true_scores == true_bestscore, axis=1)))
         kacc = np.asarray(kacc)
 
-        print("kacc ", kacc)
-        print("samples ", n_samples_processed)
-        print("batch ", batch_size[0])
         mean_loss += loss.detach().numpy() * batch_size[0]
         mean_kacc += kacc * batch_size[0]
         print("mean loss ", mean_loss)
