@@ -4,18 +4,17 @@ import csv
 import numpy as np
 import time
 import pathlib
+import torch
+import utilities
 
 from torch.utils.data import DataLoader
-
-import utilities
 from torch_code.LazyDataset import LazyDataset
 from torch_code.model import NeuralNet
-
 from torch_code.utilities_tf import load_batch_gcnn
 
-import torch
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 
 def load_batch_flat(sample_files, feats_type, augment_feats, normalize_feats):
     cand_features = []
@@ -40,19 +39,9 @@ def load_batch_flat(sample_files, feats_type, augment_feats, normalize_feats):
 
 
 def padding(output, n_vars_per_sample, pad_value=-1e8):
-    # n_vars_max = tf.reduce_max(n_vars_per_sample)
     n_vars_max = torch.max(n_vars_per_sample)
 
-    # output = tf.split(
     output = torch.split(output, tuple(n_vars_per_sample), 1)
-    # output = tf.concat([
-    #     tf.pad(
-    #         x,
-    #         paddings=[[0, 0], [0, n_vars_max - tf.shape(x)[1]]],
-    #         mode='CONSTANT',
-    #         constant_values=pad_value)
-    #     for x in output
-    # ], axis=0)
 
     output2 = []
     for x in output:
@@ -63,6 +52,7 @@ def padding(output, n_vars_per_sample, pad_value=-1e8):
 
     return output
 
+
 def process(policy, dataloader, top_k):
     mean_kacc = np.zeros(len(top_k))
 
@@ -70,6 +60,7 @@ def process(policy, dataloader, top_k):
     for batch in dataloader:
         batch = load_batch_gcnn(batch, device)
         pred_scores = None
+        cand_scores = None
         n_cands = None
         if policy['type'] == 'gcnn':
             c, ei, ev, v, n_cs, n_vs, n_cands, cands, best_cands, cand_scores = batch
@@ -104,6 +95,12 @@ def process(policy, dataloader, top_k):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        '--samples_path',
+        default='../data/samples/setcover-small/500r_1000c_0.05d'
+    )
+
     parser.add_argument(
         '--problem',
         help='MILP instance type to process.',
@@ -121,29 +118,17 @@ if __name__ == '__main__':
     print(f"problem: {args.problem}")
     print(f"gpu: {args.gpu}")
 
-    os.makedirs("results", exist_ok=True)
-    result_file = f"results/{args.problem}_validation_{time.strftime('%Y%m%d-%H%M%S')}.csv"
     seeds = [0, 1, 2, 3, 4]
     # seeds = [0]
     gcnn_models = ['baseline']
     test_batch_size = 16
     top_k = [1, 3, 5, 10]
 
-    problem_folders = {
-        'setcover': 'setcover/500r_1000c_0.05d',
-        'cauctions': 'cauctions/100_500',
-        'facilities': 'facilities/100_100_5',
-        'indset': 'indset/500_4',
-        'setcover-small': 'setcover-small/500r_1000c_0.05d'
-    }
-    problem_folder = problem_folders[args.problem]
+    result_file = f"results/{args.problem}_test_{time.strftime('%Y%m%d-%H%M%S')}.csv"
 
-    result_file = f"results/{args.problem}_test_{time.strftime('%Y%m%d-%H%M%S')}"
-
-    result_file = result_file + '.csv'
     os.makedirs('results', exist_ok=True)
 
-    test_files = list(pathlib.Path(f"../data/samples/{problem_folder}/test").glob('sample_*.pkl'))
+    test_files = list(pathlib.Path(f"{args.samples_path}/test").glob('sample_*.pkl'))
     test_files = [str(x) for x in test_files]
 
     print(f"{len(test_files)} test samples")

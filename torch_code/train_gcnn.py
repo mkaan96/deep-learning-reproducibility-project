@@ -112,6 +112,12 @@ def process(model, dataloader, top_k, cross, optimizer=None):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
+
+    parser.add_argument(
+        '--samples_path',
+        default='../data/samples/setcover-small/500r_1000c_0.05d'
+    )
+
     parser.add_argument(
         '--problem',
         help='MILP instance type to process.',
@@ -147,14 +153,6 @@ if __name__ == '__main__':
     train_ncands_limit = np.inf
     valid_ncands_limit = np.inf
 
-    problem_folders = {
-        'setcover': 'setcover/500r_1000c_0.05d',
-        'cauctions': 'cauctions/100_500',
-        'facilities': 'facilities/100_100_5',
-        'indset': 'indset/500_4',
-        'setcover-small': 'setcover-small/500r_1000c_0.05d'
-    }
-    problem_folder = problem_folders[args.problem]
 
     running_dir = f"trained_models/{args.problem}/baseline/{args.seed}"
 
@@ -180,8 +178,8 @@ if __name__ == '__main__':
     torch.manual_seed(rng.randint(np.iinfo(int).max))
 
     ### SET-UP DATASET ###
-    train_files = list(pathlib.Path(f'../data/samples/{problem_folder}/train').glob('sample_*.pkl'))
-    valid_files = list(pathlib.Path(f'../data/samples/{problem_folder}/valid').glob('sample_*.pkl'))
+    train_files = list(pathlib.Path(f'{args.samples_path}/train').glob('sample_*.pkl'))
+    valid_files = list(pathlib.Path(f'{args.samples_path}/valid').glob('sample_*.pkl'))
 
 
     log(f"{len(train_files)} training samples", logfile)
