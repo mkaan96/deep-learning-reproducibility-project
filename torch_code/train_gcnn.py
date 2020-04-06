@@ -4,14 +4,11 @@ import os
 import argparse
 import pathlib
 import numpy as np
-import tensorflow as tf
-import tensorflow.contrib.eager as tfe
 import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
 import utilities
-from models.baseline.model import GCNPolicy
 from torch_code.LazyDataset import LazyDataset
 from torch_code.utilities import log
 
@@ -20,6 +17,7 @@ from torch_code.model import NeuralNet
 import json
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 
 def pretrain(model, dataloader):
     """
@@ -45,14 +43,14 @@ def pretrain(model, dataloader):
             c, ei, ev, v, n_cs, n_vs, n_cands, cands, best_cands, cand_scores = batch
             batched_states = (c, ei, ev, v, n_cs, n_vs)
 
-            if not new_model.pre_train(batched_states):
+            if not model.pre_train(batched_states):
                 remove_batch_from_memory(batch)
                 torch.cuda.empty_cache()
                 break
 
             remove_batch_from_memory(batch)
             torch.cuda.empty_cache()
-        res = new_model.pre_train_next()
+        res = model.pre_train_next()
         if res is None:
             break
 
@@ -73,15 +71,17 @@ def process(model, dataloader, top_k, cross, optimizer=None):
         batch_size = n_cs.shape
 
         if optimizer:
+            optimizer.zero_grad()
+            model.train()
             logits = model(batched_states) # training mode
             logits = torch.unsqueeze(torch.squeeze(logits, 0)[cands.type(torch.LongTensor)], 0) # filter candidate variables
             logits = model.pad_output(logits, n_cands)  # apply padding now
 
-            optimizer.zero_grad()
             loss = cross(logits, best_cands.long())
             loss.backward()
             optimizer.step()
         else:
+            model.eval()
             logits = model(batched_states)  # eval mode
             logits = torch.unsqueeze(torch.squeeze(logits, 0)[cands.type(torch.LongTensor)], 0) # filter candidate variables
             logits = model.pad_output(logits, n_cands.type(torch.LongTensor))  # apply padding now
@@ -176,19 +176,8 @@ if __name__ == '__main__':
     log(f"gpu: {args.gpu}", logfile)
     log(f"seed {args.seed}", logfile)
 
-    ### NUMPY / TENSORFLOW SETUP ###
-    if args.gpu == -1:
-        os.environ['CUDA_VISIBLE_DEVICES'] = ''
-    else:
-        os.environ['CUDA_VISIBLE_DEVICES'] = f'{args.gpu}'
-    config = tf.ConfigProto()
-    config.gpu_options.allow_growth = True
-    tf.enable_eager_execution(config)
-    tf.executing_eagerly()
-
     rng = np.random.RandomState(args.seed)
     torch.manual_seed(rng.randint(np.iinfo(int).max))
-    # tf.set_random_seed(rng.randint(np.iinfo(int).max))
 
     ### SET-UP DATASET ###
     train_files = list(pathlib.Path(f'../data/samples/{problem_folder}/train').glob('sample_*.pkl'))
@@ -209,42 +198,37 @@ if __name__ == '__main__':
     pretrain_data = LazyDataset(pretrain_files)
     pretrain_data = DataLoader(pretrain_data, batch_size=pretrain_batch_size)
 
-    new_model = NeuralNet(device).to(device)
+    model = NeuralNet(device).to(device)
 
     # Loss and optimizer
     criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(new_model.parameters(), lr=lr)
-    model = GCNPolicy()
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     cross = nn.CrossEntropyLoss().to(device)
     ### TRAINING LOOP ###
     best_loss = np.inf
     for epoch in range(max_epochs + 1):
         log(f"EPOCH {epoch}...", logfile)
-        epoch_loss_avg = tfe.metrics.Mean()
-        epoch_accuracy = tfe.metrics.Accuracy()
 
         # TRAIN
         if epoch == 0:
-            n = pretrain(model=new_model, dataloader=pretrain_data)
+            n = pretrain(model=model, dataloader=pretrain_data)
             log(f"PRETRAINED {n} LAYERS", logfile)
         else:
             # bugfix: tensorflow's shuffle() seems broken...
             epoch_train_files = rng.choice(train_files, epoch_size * batch_size, replace=True)
             train_data = LazyDataset(epoch_train_files)
             train_data = DataLoader(train_data, batch_size=batch_size)
-            new_model.train()
-            train_loss, train_kacc = process(new_model, train_data, top_k, cross, optimizer)
+            train_loss, train_kacc = process(model, train_data, top_k, cross, optimizer)
             log(f"TRAIN LOSS: {train_loss:0.3f} " + "".join([f" acc@{k}: {acc:0.3f}" for k, acc in zip(top_k, train_kacc)]), logfile)
 
         # TEST
-        new_model.eval()
-        valid_loss, valid_kacc = process(new_model, valid_data, top_k, cross, None)
+        valid_loss, valid_kacc = process(model, valid_data, top_k, cross, None)
         log(f"VALID LOSS: {valid_loss:0.3f} " + "".join([f" acc@{k}: {acc:0.3f}" for k, acc in zip(top_k, valid_kacc)]), logfile)
 
         if valid_loss < best_loss:
             plateau_count = 0
             best_loss = valid_loss
-            model.save_state(os.path.join(running_dir, 'best_params.pkl'))
+            torch.save(model.state_dict(), os.path.join(running_dir, 'best_params.pkl'))
             log(f"  best model so far", logfile)
         else:
             plateau_count += 1
@@ -255,7 +239,8 @@ if __name__ == '__main__':
                 lr *= 0.2
                 log(f"  {plateau_count} epochs without improvement, decreasing learning rate to {lr}", logfile)
 
-    model.restore_state(os.path.join(running_dir, 'best_params.pkl'))
-    valid_loss, valid_kacc = process(model, valid_data, top_k, None)
+    model = NeuralNet(device).to(device)
+    model.load_state_dict(torch.load(os.path.join(running_dir, 'best_params.pkl')))
+    cross = nn.CrossEntropyLoss().to(device)
+    valid_loss, valid_kacc = process(model, valid_data, top_k, cross, None)
     log(f"BEST VALID LOSS: {valid_loss:0.3f} " + "".join([f" acc@{k}: {acc:0.3f}" for k, acc in zip(top_k, valid_kacc)]), logfile)
-
