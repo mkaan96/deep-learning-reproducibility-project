@@ -61,7 +61,7 @@ def pretrain(model, dataloader):
     return i
 
 
-def process(model, dataloader, top_k, optimizer=None):
+def process(model, dataloader, top_k, cross, optimizer=None):
     mean_loss = 0
     mean_kacc = np.zeros(len(top_k))
 
@@ -73,59 +73,42 @@ def process(model, dataloader, top_k, optimizer=None):
         batch_size = n_cs.shape
 
         if optimizer:
-          #  with tf.GradientTape() as tape:
-                logits = model(batched_states) # training mode
-                # logits = tf.expand_dims(tf.gather(tf.squeeze(logits, 0), cands), 0)  # filter candidate variables
-                logits = torch.unsqueeze(torch.squeeze(logits, 0)[cands.type(torch.LongTensor)], 0) # filter candidate variables
-                logits = model.pad_output(logits, n_cands)  # apply padding now
-                
-                # loss = tf.losses.sparse_softmax_cross_entropy(labels=best_cands, logits=logits)
-                
-                optimizer.zero_grad()
-                cross = nn.CrossEntropyLoss()
-                loss = cross(logits, best_cands.type(torch.LongTensor))
-                loss.backward()
-                optimizer.step()
+            logits = model(batched_states) # training mode
+            logits = torch.unsqueeze(torch.squeeze(logits, 0)[cands.type(torch.LongTensor)], 0) # filter candidate variables
+            logits = model.pad_output(logits, n_cands)  # apply padding now
 
-           # grads = tape.gradient(target=loss, sources=model.variables)
-           # optimizer.apply_gradients(zip(grads, model.variables))
+            optimizer.zero_grad()
+            loss = cross(logits, best_cands.long())
+            loss.backward()
+            optimizer.step()
         else:
             logits = model(batched_states)  # eval mode
-            # logits = tf.expand_dims(tf.gather(tf.squeeze(logits, 0), cands), 0)  # filter candidate variables
             logits = torch.unsqueeze(torch.squeeze(logits, 0)[cands.type(torch.LongTensor)], 0) # filter candidate variables
             logits = model.pad_output(logits, n_cands.type(torch.LongTensor))  # apply padding now
             
-            # loss = tf.losses.sparse_softmax_cross_entropy(labels=best_cands, logits=logits)
             cross = nn.CrossEntropyLoss()
-            loss = cross(logits, best_cands.type(torch.LongTensor))
-            loss.backward()
+            loss = cross(logits, best_cands.long())
 
-        # true_scores = model.pad_output(tf.reshape(cand_scores, (1, -1)), n_cands)
         true_scores = model.pad_output(torch.reshape(cand_scores, (1, -1)), n_cands)
-        # true_bestscore = tf.reduce_max(true_scores, axis=-1, keepdims=True)
         true_bestscore = torch.max(true_scores, -1, True)
-        true_scores = true_scores.numpy()
-        true_bestscore = true_bestscore[0].numpy()
+        true_bestscore = true_bestscore[0]
  
         kacc = []
         for k in top_k:
-            # pred_top_k = tf.nn.top_k(logits, k=k)[1].numpy()
-            pred_top_k = torch.topk(logits, k)[1].numpy()
-
-            pred_top_k_true_scores = np.take_along_axis(true_scores, pred_top_k, axis=1)
-            kacc.append(np.mean(np.any(pred_top_k_true_scores == true_bestscore, axis=1)))
+            pred_top_k = torch.topk(logits, k)[1]
+            pred_top_k_true_scores = true_scores.gather(1, pred_top_k)
+            kacc.append(torch.mean(torch.any(torch.eq(pred_top_k_true_scores, true_bestscore), dim=1).float(), dim=0).item())
         kacc = np.asarray(kacc)
 
-        mean_loss += loss.detach().numpy() * batch_size[0]
+        mean_loss += loss.item() * batch_size[0]
         mean_kacc += kacc * batch_size[0]
-        print("mean loss ", mean_loss)
-        print("mean kacc ", mean_kacc)
         n_samples_processed += batch_size[0]
 
     mean_loss /= n_samples_processed
     mean_kacc /= n_samples_processed
 
     return mean_loss, mean_kacc
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -232,6 +215,7 @@ if __name__ == '__main__':
     criterion = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(new_model.parameters(), lr=lr)
     model = GCNPolicy()
+    cross = nn.CrossEntropyLoss().to(device)
     ### TRAINING LOOP ###
     best_loss = np.inf
     for epoch in range(max_epochs + 1):
@@ -248,11 +232,13 @@ if __name__ == '__main__':
             epoch_train_files = rng.choice(train_files, epoch_size * batch_size, replace=True)
             train_data = LazyDataset(epoch_train_files)
             train_data = DataLoader(train_data, batch_size=batch_size)
-            train_loss, train_kacc = process(new_model, train_data, top_k, optimizer)
+            new_model.train()
+            train_loss, train_kacc = process(new_model, train_data, top_k, cross, optimizer)
             log(f"TRAIN LOSS: {train_loss:0.3f} " + "".join([f" acc@{k}: {acc:0.3f}" for k, acc in zip(top_k, train_kacc)]), logfile)
 
         # TEST
-        valid_loss, valid_kacc = process(new_model, valid_data, top_k, None)
+        new_model.eval()
+        valid_loss, valid_kacc = process(new_model, valid_data, top_k, cross, None)
         log(f"VALID LOSS: {valid_loss:0.3f} " + "".join([f" acc@{k}: {acc:0.3f}" for k, acc in zip(top_k, valid_kacc)]), logfile)
 
         if valid_loss < best_loss:

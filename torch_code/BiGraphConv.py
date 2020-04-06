@@ -81,9 +81,9 @@ class BipartiteGraphConvolution(nn.Module):
             prev_features = right_features
             is_left = False
 
-        left_features = self.feature_module_left(left_features)[edge_indices[0]]
-        edge_features = self.feature_module_edge(edge_features)
-        right_features = self.feature_module_right(right_features)[edge_indices[1]]
+        left_features = self.feature_module_left(left_features)[edge_indices[0]].detach()
+        edge_features = self.feature_module_edge(edge_features).detach()
+        right_features = self.feature_module_right(right_features)[edge_indices[1]].detach()
 
         joint_features = left_features + edge_features + right_features
         if is_left:

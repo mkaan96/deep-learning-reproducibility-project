@@ -1,9 +1,7 @@
 import os
 import argparse
 import pathlib
-import pickle
 import numpy as np
-import gzip
 from models.baseline.model import GCNPolicy
 import tensorflow as tf
 import tensorflow.contrib.eager as tfe
@@ -13,6 +11,7 @@ from utilities import log
 
 from utilities_tf import load_batch_gcnn
 import json
+
 
 def load_batch_tf(x):
     return tf.py_func(
