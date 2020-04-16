@@ -144,7 +144,7 @@ if __name__ == '__main__':
             policy['type'] = policy_type
 
             policy['model'] = NeuralNet(device).to(device)
-            policy['model'].load_state_dict(torch.load(f"trained_models_extra/{args.problem}/baseline/{seed}/{args.lr}/{args.optimizer}/best_params.pkl"))
+            policy['model'].load_state_dict(torch.load(f"trained_models/{args.problem}/baseline/{seed}/{args.lr}/{args.optimizer}/best_params.pkl"))
 
             test_data = LazyDataset(test_files)
             test_data = DataLoader(test_data, batch_size=test_batch_size)
