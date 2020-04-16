@@ -77,8 +77,8 @@ Run the following command in the terminal from the root of this project:
 
 ```
 source activate deep-learning-project
-python test.py --lr 0.001  
-python test.py --lr 0.1  
+python test.py --lr 0.0001  
+python test.py --lr 0.01  
 python test.py --optimizer RMSprop
 ```
 
