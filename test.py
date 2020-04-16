@@ -5,37 +5,15 @@ import numpy as np
 import time
 import pathlib
 import torch
-import utilities
+import json
 
 from torch.utils.data import DataLoader
-from torch_code.LazyDataset import LazyDataset
-from torch_code.model import NeuralNet
-from torch_code.utilities_tf import load_batch_gcnn
+from LazyDataset import LazyDataset
+from model import NeuralNet
+from utilities import load_batch_gcnn
 
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-
-def load_batch_flat(sample_files, feats_type, augment_feats, normalize_feats):
-    cand_features = []
-    cand_choices = []
-    cand_scoress = []
-
-    for i, filename in enumerate(sample_files):
-        cand_states, cand_scores, cand_choice = utilities.load_flat_samples(filename, feats_type, 'scores', augment_feats, normalize_feats)
-
-        cand_features.append(cand_states)
-        cand_choices.append(cand_choice)
-        cand_scoress.append(cand_scores)
-
-    n_cands_per_sample = [v.shape[0] for v in cand_features]
-
-    cand_features = np.concatenate(cand_features, axis=0).astype(np.float32, copy=False)
-    cand_choices = np.asarray(cand_choices).astype(np.int32, copy=False)
-    cand_scoress = np.concatenate(cand_scoress, axis=0).astype(np.float32, copy=False)
-    n_cands_per_sample = np.asarray(n_cands_per_sample).astype(np.int32, copy=False)
-
-    return cand_features, n_cands_per_sample, cand_choices, cand_scoress
 
 
 def padding(output, n_vars_per_sample, pad_value=-1e8):
@@ -59,17 +37,12 @@ def process(policy, dataloader, top_k):
     n_samples_processed = 0
     for batch in dataloader:
         batch = load_batch_gcnn(batch, device)
-        pred_scores = None
-        cand_scores = None
-        n_cands = None
-        if policy['type'] == 'gcnn':
-            c, ei, ev, v, n_cs, n_vs, n_cands, cands, best_cands, cand_scores = batch
+        c, ei, ev, v, n_cs, n_vs, n_cands, cands, best_cands, cand_scores = batch
 
-            pred_scores = policy['model']((c, ei, ev, v, torch.sum(n_cs), torch.sum(n_vs)))
+        pred_scores = policy['model']((c, ei, ev, v, torch.sum(n_cs), torch.sum(n_vs)))
 
-            # filter candidate variables
-            # pred_scores = tf.expand_dims(tf.gather(tf.squeeze(pred_scores, 0), cands), 0)
-            pred_scores = torch.unsqueeze(torch.squeeze(pred_scores, 0)[cands.type(torch.LongTensor)], 0)
+        # filter candidate variables
+        pred_scores = torch.unsqueeze(torch.squeeze(pred_scores, 0)[cands.type(torch.LongTensor)], 0)
 
         # padding
         pred_scores = padding(pred_scores, n_cands)
@@ -98,30 +71,44 @@ if __name__ == '__main__':
 
     parser.add_argument(
         '--samples_path',
-        default='../data/samples/setcover-small/500r_1000c_0.05d'
+        default='data/samples/setcover/500r_1000c_0.05d'
     )
 
     parser.add_argument(
         '--problem',
         help='MILP instance type to process.',
-        choices=['setcover', 'cauctions', 'facilities', 'indset', 'setcover-small'],
-        default='setcover-small'
+        choices=['setcover', 'setcover-small', 'mik'],
+        default='setcover'
     )
+
     parser.add_argument(
-        '-g', '--gpu',
-        help='CUDA GPU id (-1 for CPU).',
-        type=int,
-        default=0,
+        '--lr',
+        help='Chosen learning rate',
+        choices=['lr-normal', 'lr-high', 'lr-low'],
+        default='lr-normal'
     )
+
+    parser.add_argument(
+        '--optimizer',
+        help='Chosen optimizer',
+        choices=['Adam', 'RMSprop'],
+        default='Adam'
+    )
+
     args = parser.parse_args()
 
     print(f"problem: {args.problem}")
-    print(f"gpu: {args.gpu}")
 
-    seeds = [0, 1, 2, 3, 4]
-    # seeds = [0]
+    if args.lr == 'lr-normal' and args.optimizer == 'Adam' and args.problem != 'mik':
+        seeds = [0, 1, 2, 3, 4]
+    else:
+        seeds = [0]
     gcnn_models = ['baseline']
-    test_batch_size = 16
+
+    with open('config.json', 'r') as f:
+        config = json.load(f)
+    test_batch_size = config['valid_batch_size']
+
     top_k = [1, 3, 5, 10]
 
     result_file = f"results/{args.problem}_test_{time.strftime('%Y%m%d-%H%M%S')}.csv"
@@ -157,13 +144,14 @@ if __name__ == '__main__':
             policy['type'] = policy_type
 
             policy['model'] = NeuralNet(device).to(device)
-            policy['model'].load_state_dict(torch.load(f"trained_models/{args.problem}/baseline/{seed}/best_params.pkl"))
+            policy['model'].load_state_dict(torch.load(f"trained_models_extra/{args.problem}/baseline/{seed}/{args.lr}/{args.optimizer}/best_params.pkl"))
 
             test_data = LazyDataset(test_files)
             test_data = DataLoader(test_data, batch_size=test_batch_size)
 
             policy['model'].eval()
-            test_kacc = process(policy, test_data, top_k)
+            with torch.no_grad():
+                test_kacc = process(policy, test_data, top_k)
             print(f"  {seed} " + " ".join([f"acc@{k}: {100*acc:4.1f}" for k, acc in zip(top_k, test_kacc)]))
 
             writer.writerow({

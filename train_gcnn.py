@@ -1,65 +1,22 @@
-import sys
-sys.path.insert(0,"../")
 import os
 import argparse
 import pathlib
 import numpy as np
 import torch
+import json
+
 from torch import nn
 from torch.utils.data import DataLoader
+from torch.optim.lr_scheduler import ExponentialLR
 
-import utilities
-from torch_code.LazyDataset import LazyDataset
-from torch_code.utilities import log
-
-from torch_code.utilities_tf import load_batch_gcnn, remove_batch_from_memory
-from torch_code.model import NeuralNet
-import json
+from LazyDataset import LazyDataset
+from utilities import log, valid_seed, load_batch_gcnn
+from model import NeuralNet
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
-def pretrain(model, dataloader):
-    """
-    Pre-normalizes a model (i.e., PreNormLayer layers) over the given samples.
-
-    Parameters
-    ----------
-    model : model.BaseModel
-        A base model, which may contain some model.PreNormLayer layers.
-    dataloader : torch.utils.data.DataLoader
-        Dataset to use for pre-training the model.
-    Return
-    ------
-    number of PreNormLayer layers processed.
-    """
-
-    model.pre_train_init()
-
-    i = 0
-    while True:
-        for batch in dataloader:
-            batch = load_batch_gcnn(batch, device)
-            c, ei, ev, v, n_cs, n_vs, n_cands, cands, best_cands, cand_scores = batch
-            batched_states = (c, ei, ev, v, n_cs, n_vs)
-
-            if not model.pre_train(batched_states):
-                remove_batch_from_memory(batch)
-                torch.cuda.empty_cache()
-                break
-
-            remove_batch_from_memory(batch)
-            torch.cuda.empty_cache()
-        res = model.pre_train_next()
-        if res is None:
-            break
-
-        i += 1
-
-    return i
-
-
-def process(model, dataloader, top_k, cross, optimizer=None):
+def process(model, dataloader, top_k, criterion, optimizer=None):
     mean_loss = 0
     mean_kacc = np.zeros(len(top_k))
 
@@ -71,13 +28,13 @@ def process(model, dataloader, top_k, cross, optimizer=None):
         batch_size = n_cs.shape
 
         if optimizer:
-            optimizer.zero_grad()
+            model.zero_grad()
             model.train()
             logits = model(batched_states) # training mode
-            logits = torch.unsqueeze(torch.squeeze(logits, 0)[cands.type(torch.LongTensor)], 0) # filter candidate variables
+            logits = torch.unsqueeze(torch.squeeze(logits, 0)[cands.long()], 0) # filter candidate variables
             logits = model.pad_output(logits, n_cands)  # apply padding now
 
-            loss = cross(logits, best_cands.long())
+            loss = criterion(logits, best_cands.long())
             loss.backward()
             optimizer.step()
         else:
@@ -86,8 +43,7 @@ def process(model, dataloader, top_k, cross, optimizer=None):
             logits = torch.unsqueeze(torch.squeeze(logits, 0)[cands.type(torch.LongTensor)], 0) # filter candidate variables
             logits = model.pad_output(logits, n_cands.type(torch.LongTensor))  # apply padding now
             
-            cross = nn.CrossEntropyLoss()
-            loss = cross(logits, best_cands.long())
+            loss = criterion(logits, best_cands.long())
 
         true_scores = model.pad_output(torch.reshape(cand_scores, (1, -1)), n_cands)
         true_bestscore = torch.max(true_scores, -1, True)
@@ -115,48 +71,62 @@ if __name__ == '__main__':
 
     parser.add_argument(
         '--samples_path',
-        default='../data/samples/setcover-small/500r_1000c_0.05d'
+        default='data/samples/setcover/500r_1000c_0.05d'
     )
 
     parser.add_argument(
         '--problem',
         help='MILP instance type to process.',
-        choices=['setcover', 'cauctions', 'facilities', 'indset', 'setcover-small'],
-        default='setcover-small'
+        choices=['setcover', 'setcover-small', 'mik'],
+        default='setcover'
     )
 
     parser.add_argument(
         '-s', '--seed',
         help='Random generator seed.',
-        type=utilities.valid_seed,
+        type=valid_seed,
         default=0,
     )
+
     parser.add_argument(
-        '-g', '--gpu',
-        help='CUDA GPU id (-1 for CPU).',
-        type=int,
-        default=0,
+        '--lr',
+        help='Initial learning rate',
+        type=float,
+        default=0.001,
     )
+
+    parser.add_argument(
+        '--optimizer',
+        help='Optimizer to use',
+        default='Adam',
+        choices=['Adam', 'RMSprop']
+    )
+
     args = parser.parse_args()
-    with open('../config.json', 'r') as f:
+    with open('config.json', 'r') as f:
         config = json.load(f)
     ### HYPER PARAMETERS ###
-    max_epochs = 1000
+    max_epochs = 2
     epoch_size = 312
-    batch_size = config['batch_size']
-    pretrain_batch_size = config['pretrain_batch_size']
+    batch_size = 32
     valid_batch_size = config['valid_batch_size']
-    lr = 0.001
+    lr = args.lr
     patience = 10
     early_stopping = 20
     top_k = [1, 3, 5, 10]
     train_ncands_limit = np.inf
     valid_ncands_limit = np.inf
 
+    if args.lr == 0.001:
+        lr_dir = 'lr-normal'
+    elif args.lr > 0.001:
+        lr_dir = 'lr-high'
+    else:
+        lr_dir = 'lr-low'
 
-    running_dir = f"trained_models/{args.problem}/baseline/{args.seed}"
+    running_dir = f"trained_models/{args.problem}/baseline/{args.seed}/{lr_dir}/{args.optimizer}"
 
-    os.makedirs(running_dir, exist_ok=True)
+    os.makedirs(running_dir)
 
     ### LOG ###
     logfile = os.path.join(running_dir, 'log.txt')
@@ -164,15 +134,16 @@ if __name__ == '__main__':
     log(f"max_epochs: {max_epochs}", logfile)
     log(f"epoch_size: {epoch_size}", logfile)
     log(f"batch_size: {batch_size}", logfile)
-    log(f"pretrain_batch_size: {pretrain_batch_size}", logfile)
     log(f"valid_batch_size : {valid_batch_size }", logfile)
     log(f"lr: {lr}", logfile)
     log(f"patience : {patience }", logfile)
     log(f"early_stopping : {early_stopping }", logfile)
     log(f"top_k: {top_k}", logfile)
     log(f"problem: {args.problem}", logfile)
-    log(f"gpu: {args.gpu}", logfile)
     log(f"seed {args.seed}", logfile)
+    log(f"optimizer: {args.optimizer}")
+    log(f"problem: {args.problem}")
+    log(f"samples_path: {args.samples_path}")
 
     rng = np.random.RandomState(args.seed)
     torch.manual_seed(rng.randint(np.iinfo(int).max))
@@ -181,46 +152,44 @@ if __name__ == '__main__':
     train_files = list(pathlib.Path(f'{args.samples_path}/train').glob('sample_*.pkl'))
     valid_files = list(pathlib.Path(f'{args.samples_path}/valid').glob('sample_*.pkl'))
 
-
     log(f"{len(train_files)} training samples", logfile)
     log(f"{len(valid_files)} validation samples", logfile)
 
     train_files = [str(x) for x in train_files]
-    valid_files = [str(x) for x in valid_files]
 
+    valid_files = [str(x) for x in valid_files]
     valid_data = LazyDataset(valid_files)
     valid_data = DataLoader(valid_data, batch_size=valid_batch_size)
-
-    pretrain_files = [f for i, f in enumerate(train_files) if i % 10 == 0]
-
-    pretrain_data = LazyDataset(pretrain_files)
-    pretrain_data = DataLoader(pretrain_data, batch_size=pretrain_batch_size)
-
     model = NeuralNet(device).to(device)
 
     # Loss and optimizer
-    criterion = nn.CrossEntropyLoss()
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    cross = nn.CrossEntropyLoss().to(device)
+    criterion = nn.CrossEntropyLoss().to(device)
+    if args.optimizer == 'Adam':
+        optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    elif args.optimizer == 'RMSprop':
+        optimizer = torch.optim.RMSprop(model.parameters(), lr=lr)
+    else:
+        raise Exception('Invalid optimizer')
+
+    # Should set lr *= 0.2 when .step() is called
+    lr_scheduler = ExponentialLR(optimizer, 0.2)
     ### TRAINING LOOP ###
     best_loss = np.inf
+    plateau_count = 0
     for epoch in range(max_epochs + 1):
         log(f"EPOCH {epoch}...", logfile)
 
         # TRAIN
-        if epoch == 0:
-            n = pretrain(model=model, dataloader=pretrain_data)
-            log(f"PRETRAINED {n} LAYERS", logfile)
-        else:
-            # bugfix: tensorflow's shuffle() seems broken...
+        if epoch > 0:
             epoch_train_files = rng.choice(train_files, epoch_size * batch_size, replace=True)
             train_data = LazyDataset(epoch_train_files)
             train_data = DataLoader(train_data, batch_size=batch_size)
-            train_loss, train_kacc = process(model, train_data, top_k, cross, optimizer)
+            train_loss, train_kacc = process(model, train_data, top_k, criterion, optimizer)
             log(f"TRAIN LOSS: {train_loss:0.3f} " + "".join([f" acc@{k}: {acc:0.3f}" for k, acc in zip(top_k, train_kacc)]), logfile)
 
         # TEST
-        valid_loss, valid_kacc = process(model, valid_data, top_k, cross, None)
+        with torch.no_grad():
+            valid_loss, valid_kacc = process(model, valid_data, top_k, criterion, None)
         log(f"VALID LOSS: {valid_loss:0.3f} " + "".join([f" acc@{k}: {acc:0.3f}" for k, acc in zip(top_k, valid_kacc)]), logfile)
 
         if valid_loss < best_loss:
@@ -234,11 +203,13 @@ if __name__ == '__main__':
                 log(f"  {plateau_count} epochs without improvement, early stopping", logfile)
                 break
             if plateau_count % patience == 0:
-                lr *= 0.2
-                log(f"  {plateau_count} epochs without improvement, decreasing learning rate to {lr}", logfile)
+                lr_scheduler.step()
+                log(f"  {plateau_count} epochs without improvement, decreasing learning rate to {lr_scheduler.get_lr()}", logfile)
 
     model = NeuralNet(device).to(device)
     model.load_state_dict(torch.load(os.path.join(running_dir, 'best_params.pkl')))
-    cross = nn.CrossEntropyLoss().to(device)
-    valid_loss, valid_kacc = process(model, valid_data, top_k, cross, None)
+    criterion = nn.CrossEntropyLoss().to(device)
+    model.eval()
+    with torch.no_grad():
+        valid_loss, valid_kacc = process(model, valid_data, top_k, criterion, None)
     log(f"BEST VALID LOSS: {valid_loss:0.3f} " + "".join([f" acc@{k}: {acc:0.3f}" for k, acc in zip(top_k, valid_kacc)]), logfile)

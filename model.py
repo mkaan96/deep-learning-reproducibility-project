@@ -1,11 +1,9 @@
 import torch
 import torch.nn as nn
 
-from torch_code.BiGraphConv import BipartiteGraphConvolution
-from torch_code.embedding_modules import EmbeddingModule, EdgeEmbeddingModule
-from torch_code.output_module import OutputModule
-
-from torch_code.pre_norm_layer import PreNormLayer, PreNormException
+from BiGraphConv import BipartiteGraphConvolution
+from embedding_modules import EmbeddingModule, EdgeEmbeddingModule
+from output_module import OutputModule
 
 
 class NeuralNet(nn.Module):
@@ -15,7 +13,6 @@ class NeuralNet(nn.Module):
         self.cons_nfeats = 5
         self.edge_nfeats = 1
         self.var_nfeats = 19
-
 
         self.cons_embedding = EmbeddingModule(self.cons_nfeats, self.emb_size, device).to(device)
         self.edge_embedding = EdgeEmbeddingModule(self.edge_nfeats, device).to(device)
@@ -33,19 +30,25 @@ class NeuralNet(nn.Module):
 
         # EMBEDDINGS
         constraint_features = self.cons_embedding(constraint_features)
+        if constraint_features is None:
+            return None
         edge_features = self.edge_embedding(edge_features)
+        if edge_features is None:
+            return None
         variable_features = self.var_embedding(variable_features)
+        if variable_features is None:
+            return None
 
         # Convolutions
         constraint_features = self.conv_v_to_c((
             constraint_features, edge_indices, edge_features, variable_features, n_cons_total))
-        constraint_features = nn.functional.relu(constraint_features)
+        if constraint_features is None:
+            return None
 
         variable_features = self.conv_c_to_v((
             constraint_features, edge_indices, edge_features, variable_features, n_vars_total))
-        variable_features = nn.functional.relu(variable_features)
-
-        del constraint_features
+        if variable_features is None:
+            return None
 
         output = self.output_module(variable_features)
 
@@ -53,48 +56,10 @@ class NeuralNet(nn.Module):
 
         return output
 
-    def pre_train_init(self):
-        self.pre_train_init_rec()
-
-    def pre_train_init_rec(self):
-        layers = [module for module in self.modules() if type(module) != nn.Sequential]
-        for layer in layers:
-            if isinstance(layer, PreNormLayer):
-                layer.start_updates()
-
-    def pre_train(self,  *args, **kwargs):
-        try:
-            self.forward(*args, **kwargs)
-            return False
-        except PreNormException:
-            return True
-
-    def pre_train_next(self):
-        return self.pre_train_next_rec()
-
-    def pre_train_next_rec(self):
-        layers = [module for module in self.modules() if type(module) != nn.Sequential]
-        for layer in layers:
-            if isinstance(layer, PreNormLayer) and layer.waiting_updates and layer.received_updates:
-                layer.stop_updates()
-                return layer
-        return None
     
     def pad_output(self, output, n_vars_per_sample, pad_value=-1e8):
-        # n_vars_max = tf.reduce_max(n_vars_per_sample)
         n_vars_max = torch.max(n_vars_per_sample)
-
-        # output = tf.split(
         output = torch.split(output, tuple(n_vars_per_sample), 1)
-        # output = tf.concat([
-        #     tf.pad(
-        #         x,
-        #         paddings=[[0, 0], [0, n_vars_max - tf.shape(x)[1]]],
-        #         mode='CONSTANT',
-        #         constant_values=pad_value)
-        #     for x in output
-        # ], axis=0)
-
         output2 = []
         for x in output:
             newx = torch.nn.functional.pad(x,(0, n_vars_max.item() - x.shape[1]),'constant', pad_value)

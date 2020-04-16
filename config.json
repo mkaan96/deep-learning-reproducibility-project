@@ -1,5 +1,3 @@
 {
-  "batch_size": 32,
-  "pretrain_batch_size": 128,
   "valid_batch_size": 128
 }
