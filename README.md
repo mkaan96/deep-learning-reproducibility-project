@@ -1,6 +1,10 @@
 # Deep Learning Reproducibility Project
 By Kaan Yilmaz, Beyza Hizli and Manisha Sethia
 
+Blog post: 
+
+https://www.notion.so/Combinatorial-Optimization-with-Graph-Convolutional-Neural-Networks-88565eafc8834c7190330b0b3cc1083a#9569125c63c44077a9dd041334c4cdfa
+
 ## Introduction
 This repository contains the source code we used to reproduce GCNN model for setcover instances, extra hyperparameter 
 search and an evaluation of an additional dataset (mik) of the paper:
